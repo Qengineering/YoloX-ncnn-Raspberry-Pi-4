@@ -20,12 +20,13 @@ PiCamera::PiCamera()
     options->setMetering(Metering_Modes::METERING_MATRIX);
     options->setExposureMode(Exposure_Modes::EXPOSURE_NORMAL);
     options->setWhiteBalance(WhiteBalance_Modes::WB_AUTO);
-    options->contrast = 1.0;
-    options->saturation = 1.0;
+    options->contrast = 1.0f;
+    options->saturation = 1.0f;
     still_flags |= LibcameraApp::FLAG_STILL_RGB;
     running.store(false, std::memory_order_release);;
     frameready.store(false, std::memory_order_release);;
     framebuffer=nullptr;
+    camerastarted=false;
 }
 
 PiCamera::~PiCamera()
@@ -48,10 +49,29 @@ void PiCamera::getImage(cv::Mat &frame, CompletedRequestPtr &payload)
     }
 }
 
-bool PiCamera::capturePhoto(cv::Mat &frame)
+bool PiCamera::startPhoto()
 {
     app->OpenCamera();
     app->ConfigureStill(still_flags);
+    camerastarted=true;
+    return true;
+}
+bool PiCamera::stopPhoto()
+{
+    if(camerastarted){
+        camerastarted=false;
+        app->Teardown();
+        app->CloseCamera();
+    }
+    return true;
+}
+
+bool PiCamera::capturePhoto(cv::Mat &frame)
+{
+    if(!camerastarted){
+        app->OpenCamera();
+        app->ConfigureStill(still_flags);
+    }
     app->StartCamera();
     LibcameraApp::Msg msg = app->Wait();
     if (msg.type == LibcameraApp::MsgType::Quit)
@@ -68,14 +88,17 @@ bool PiCamera::capturePhoto(cv::Mat &frame)
         std::cerr<<"Incorrect stream received"<<std::endl;
         return false;
         app->StopCamera();
-        app->Teardown();
-        app->CloseCamera();
+        if(!camerastarted){
+            app->Teardown();
+            app->CloseCamera();
+        }
     }
     return true;
 }
 
 bool PiCamera::startVideo()
 {
+    if(camerastarted)stopPhoto();
     if(running.load(std::memory_order_release)){
         std::cerr<<"Video thread already running";
         return false;
@@ -149,6 +172,7 @@ void *PiCamera::videoThreadFunc(void *p)
     if(t->framebuffer)delete[] t->framebuffer;
     t->framebuffer=new uint8_t[buffersize];
     std::vector<libcamera::Span<uint8_t>> mem;
+
     //main loop
     while(t->running.load(std::memory_order_acquire)){
         LibcameraApp::Msg msg = t->app->Wait();
