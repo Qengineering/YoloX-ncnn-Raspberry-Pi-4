@@ -395,6 +395,8 @@ int main(int argc, char** argv)
     // follow the steps given here: https://github.com/Megvii-BaseDetection/YOLOX/tree/main/demo/ncnn/cpp
     yolox.load_param("yoloxS.param");
     yolox.load_model("yoloxS.bin");
+    yolox.opt.use_fp16_arithmetic=true;
+    yolox.opt.num_threads=4;
 
     std::vector<Object> objects;
     detect_yolox(m, objects);
